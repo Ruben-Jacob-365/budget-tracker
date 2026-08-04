@@ -2,10 +2,11 @@
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import type { Transaction, Category, Account } from '../../types'
+import type { Transaction, Category, Account, ParentBudget } from '../../types'
 import { useStorage } from '../../hooks/useStorage'
 import { getTodayISO } from '../../utils/date'
 import CategoryPicker from './CategoryPicker'
+import MerchantInput from '../../components/ui/MerchantInput'
 
 const schema = z
   .object({
@@ -20,6 +21,7 @@ const schema = z
     toAccountId: z.string().optional(),
     merchant: z.string().optional(),
     notes: z.string().optional(),
+    budgetId: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type !== 'transfer') {
@@ -41,11 +43,13 @@ type FormValues = z.infer<typeof schema>
 interface Props {
   categories: Category[]
   accounts: Account[]
+  budgets?: ParentBudget[]
+  merchants?: string[]
   transaction?: Transaction
   onSuccess: () => void
 }
 
-export default function TransactionForm({ categories, accounts, transaction, onSuccess }: Props) {
+export default function TransactionForm({ categories, accounts, budgets = [], merchants = [], transaction, onSuccess }: Props) {
   const { storage, settings } = useStorage()
 
   const {
@@ -66,6 +70,7 @@ export default function TransactionForm({ categories, accounts, transaction, onS
       toAccountId: transaction?.toAccountId ?? '',
       merchant: transaction?.merchant ?? '',
       notes: transaction?.notes ?? '',
+      budgetId: transaction?.budgetId ?? '',
     },
   })
 
@@ -84,7 +89,7 @@ export default function TransactionForm({ categories, accounts, transaction, onS
       toAccountId: isTransfer ? (data.toAccountId || undefined) : undefined,
       merchant: !isTransfer ? (data.merchant || undefined) : undefined,
       notes: data.notes || undefined,
-      tags: transaction?.tags,
+      budgetId: data.type === 'expense' ? (data.budgetId || undefined) : undefined,
     }
     if (transaction) {
       await storage.updateTransaction(transaction.id, payload)
@@ -221,9 +226,57 @@ export default function TransactionForm({ categories, accounts, transaction, onS
 
           <div>
             <label htmlFor="merchant" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Merchant</label>
-            <input id="merchant" type="text" placeholder="e.g. Zomato, Amazon" {...register('merchant')} className={inputCls} />
-            {errors.merchant && <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400" role="alert">{errors.merchant.message}</p>}
+            <Controller
+              control={control}
+              name="merchant"
+              render={({ field }) => (
+                <MerchantInput
+                  id="merchant"
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  merchants={merchants}
+                  placeholder="e.g. Zomato, Amazon"
+                  className={inputCls}
+                  error={errors.merchant?.message}
+                />
+              )}
+            />
           </div>
+
+          {/* Optional budget assignment — only for expenses */}
+          {type === 'expense' && budgets.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                Budget <span className="font-normal text-slate-400">(optional)</span>
+              </p>
+              <Controller
+                control={control}
+                name="budgetId"
+                render={({ field }) => (
+                  <div className="flex gap-2 flex-wrap">
+                    {budgets.map(b => {
+                      const selected = field.value === b.id
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => field.onChange(selected ? '' : b.id)}
+                          className={`px-3 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+                            selected
+                              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                              : 'border-transparent bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          🎯 {b.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              />
+            </div>
+          )}
         </>
       )}
 

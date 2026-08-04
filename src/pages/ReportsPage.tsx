@@ -18,61 +18,70 @@ import {
 import { useStorage } from "../hooks/useStorage";
 import { useTransactions } from "../hooks/useTransactions";
 import { useCategories } from "../hooks/useCategories";
+import { useParentBudgets } from "../hooks/useParentBudgets";
 import { formatCurrency } from "../utils/currency";
-import { addMonths, formatMonthYear, getCurrentMonth } from "../utils/date";
+import { addMonths, formatMonthYear, formatDate, getCurrentMonth } from "../utils/date";
+import type { ParentBudget } from "../types";
 
 const CHART_COLORS = [
-  "#6366f1",
-  "#8b5cf6",
-  "#f97316",
-  "#10b981",
-  "#ef4444",
-  "#eab308",
-  "#14b8a6",
-  "#ec4899",
+  "#6366f1", "#8b5cf6", "#f97316", "#10b981",
+  "#ef4444", "#eab308", "#14b8a6", "#ec4899",
 ];
+
+/** Human-readable period string for a budget. */
+function budgetPeriod(b: ParentBudget): string {
+  const type = b.budgetType ?? "custom";
+  if (type === "monthly" && b.month) return formatMonthYear(b.month);
+  if (b.startDate && b.endDate)
+    return `${formatDate(b.startDate)} – ${formatDate(b.endDate)}`;
+  return "";
+}
 
 export default function ReportsPage() {
   const { settings } = useStorage();
   const { transactions } = useTransactions();
   const categories = useCategories();
+  const { parentBudgets, allocations } = useParentBudgets();
   const [month, setMonth] = useState(getCurrentMonth());
+  const [selectedBudgetId, setSelectedBudgetId] = useState<string>("overview");
 
   const catMap = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
   );
 
+  const fmt = (n: number) =>
+    formatCurrency(n, settings.currencySymbol, settings.locale);
+
+  const currencyFmt = (
+    n: number | string | readonly (number | string)[] | undefined,
+  ) => {
+    const numeric = Array.isArray(n) ? Number(n[0] ?? 0) : Number(n ?? 0);
+    return fmt(numeric);
+  };
+
+  // ── Overview charts ──────────────────────────────────────────────────────
+
   const chartData = useMemo(() => {
-    const months: Array<{ month: string; income: number; expense: number }> =
-      [];
-    let cursor = month;
+    const months: Array<{ month: string; income: number; expense: number }> = [];
     for (let i = 5; i >= 0; i--) {
-      cursor = addMonths(month, -i);
+      const cursor = addMonths(month, -i);
       const monthTxs = transactions.filter((tx) => tx.date.startsWith(cursor));
-      const income = monthTxs
-        .filter((tx) => tx.type === "income")
-        .reduce((sum, tx) => sum + tx.amount, 0);
-      const expense = monthTxs
-        .filter((tx) => tx.type === "expense")
-        .reduce((sum, tx) => sum + tx.amount, 0);
-      months.push({ month: cursor, income, expense });
+      months.push({
+        month: cursor,
+        income: monthTxs.filter(tx => tx.type === "income").reduce((s, tx) => s + tx.amount, 0),
+        expense: monthTxs.filter(tx => tx.type === "expense").reduce((s, tx) => s + tx.amount, 0),
+      });
     }
     return months;
   }, [transactions, month]);
 
   const categoryBreakdown = useMemo(() => {
-    const monthTxs = transactions.filter(
-      (tx) =>
-        tx.date.startsWith(month) && tx.type === "expense" && tx.categoryId,
-    );
     const totals = new Map<string, number>();
-
-    for (const tx of monthTxs) {
-      if (!tx.categoryId) continue;
+    for (const tx of transactions) {
+      if (!tx.date.startsWith(month) || tx.type !== "expense" || !tx.categoryId) continue;
       totals.set(tx.categoryId, (totals.get(tx.categoryId) ?? 0) + tx.amount);
     }
-
     return Array.from(totals.entries())
       .map(([categoryId, amount]) => ({
         name: catMap.get(categoryId)?.name ?? "Unknown",
@@ -82,88 +91,116 @@ export default function ReportsPage() {
       .sort((a, b) => b.value - a.value);
   }, [transactions, month, catMap]);
 
-  const currencyFmt = (
-    n: number | string | readonly (number | string)[] | undefined,
-  ) => {
-    const numeric = Array.isArray(n) ? Number(n[0] ?? 0) : Number(n ?? 0);
-    return formatCurrency(numeric, settings.currencySymbol, settings.locale);
-  };
+  // ── Budget-specific report ───────────────────────────────────────────────
+
+  const selectedBudget = parentBudgets.find(b => b.id === selectedBudgetId);
+
+  const budgetReport = useMemo(() => {
+    if (!selectedBudget) return null;
+
+    const budgetTxs = transactions.filter(
+      tx => tx.budgetId === selectedBudget.id && tx.type === "expense",
+    );
+    const totalSpent = budgetTxs.reduce((s, tx) => s + tx.amount, 0);
+
+    // Group by category: total + merchant breakdown
+    const byCategory = new Map<
+      string,
+      { total: number; merchants: Map<string, number> }
+    >();
+
+    for (const tx of budgetTxs) {
+      const catId = tx.categoryId ?? "__uncat__";
+      if (!byCategory.has(catId)) byCategory.set(catId, { total: 0, merchants: new Map() });
+      const entry = byCategory.get(catId)!;
+      entry.total += tx.amount;
+      const merchant = tx.merchant?.trim() || "Unknown";
+      entry.merchants.set(merchant, (entry.merchants.get(merchant) ?? 0) + tx.amount);
+    }
+
+    // Merge with allocations for this budget
+    const budgetAllocs = allocations.filter(a => a.budgetId === selectedBudget.id);
+    const allocMap = new Map(budgetAllocs.map(a => [a.categoryId, a.amount]));
+
+    // Build sorted rows (allocated categories first, then any unallocated spend)
+    const allCatIds = new Set([
+      ...budgetAllocs.map(a => a.categoryId),
+      ...byCategory.keys(),
+    ]);
+
+    const rows = Array.from(allCatIds)
+      .map(catId => ({
+        catId,
+        category: catMap.get(catId),
+        allocated: allocMap.get(catId) ?? 0,
+        spent: byCategory.get(catId)?.total ?? 0,
+        merchants: byCategory.get(catId)
+          ? Array.from(byCategory.get(catId)!.merchants.entries())
+              .sort((a, b) => b[1] - a[1])
+          : [],
+      }))
+      .sort((a, b) => b.spent - a.spent);
+
+    return { totalSpent, rows };
+  }, [selectedBudget, transactions, allocations, catMap]);
+
+  const isEmpty = transactions.length === 0;
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-          Reports
-        </h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Reports</h1>
       </div>
 
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3">
-        <button
-          type="button"
-          onClick={() => setMonth((m) => addMonths(m, -1))}
-          aria-label="Previous month"
-          className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+      {/* Budget selector */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3">
+        <label htmlFor="budget-select" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1.5">
+          View Report For
+        </label>
+        <select
+          id="budget-select"
+          value={selectedBudgetId}
+          onChange={e => setSelectedBudgetId(e.target.value)}
+          className="w-full bg-transparent text-sm font-semibold text-slate-900 dark:text-white focus:outline-none"
         >
-          <svg
-            width={20}
-            height={20}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-        </button>
-        <span className="text-sm font-semibold text-slate-900 dark:text-white">
-          {formatMonthYear(month)}
-        </span>
-        <button
-          type="button"
-          onClick={() => setMonth((m) => addMonths(m, 1))}
-          aria-label="Next month"
-          className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        >
-          <svg
-            width={20}
-            height={20}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        </button>
+          <option value="overview">📊 Overview (all months)</option>
+          {parentBudgets.map(b => (
+            <option key={b.id} value={b.id}>
+              🎯 {b.name}{budgetPeriod(b) ? ` — ${budgetPeriod(b)}` : ""}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {transactions.length === 0 ? (
+      {isEmpty ? (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 text-center">
-          <span className="text-4xl" aria-hidden="true">
-            📊
-          </span>
-          <p className="mt-3 font-semibold text-slate-700 dark:text-slate-300">
-            No data yet
-          </p>
+          <span className="text-4xl" aria-hidden="true">📊</span>
+          <p className="mt-3 font-semibold text-slate-700 dark:text-slate-300">No data yet</p>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Add transactions to unlock monthly trends and category insights.
+            Add transactions to unlock trends and insights.
           </p>
         </div>
-      ) : (
+      ) : selectedBudgetId === "overview" ? (
+        /* ── Overview mode ── */
         <div className="space-y-4">
+          {/* Month navigation for overview charts */}
+          <div className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3">
+            <button type="button" onClick={() => setMonth(m => addMonths(m, -1))} aria-label="Previous month"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">{formatMonthYear(month)}</span>
+            <button type="button" onClick={() => setMonth(m => addMonths(m, 1))} aria-label="Next month"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+
           <ChartCard title="Spending by month (last 6 months)">
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#94a3b8"
-                    opacity={0.25}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.25} />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} />
                   <Tooltip formatter={(value) => currencyFmt(value)} />
@@ -176,85 +213,273 @@ export default function ReportsPage() {
           </ChartCard>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <ChartCard title="Category breakdown">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryBreakdown}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={55}
-                      outerRadius={82}
-                      paddingAngle={2}
-                    >
-                      {categoryBreakdown.map((entry, index) => (
-                        <Cell
-                          key={`${entry.name}-${index}`}
-                          fill={
-                            entry.color ??
-                            CHART_COLORS[index % CHART_COLORS.length]
-                          }
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => currencyFmt(value)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+            <ChartCard title={`Category breakdown — ${formatMonthYear(month)}`}>
+              {categoryBreakdown.length === 0 ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">No expenses this month</p>
+              ) : (
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={categoryBreakdown} dataKey="value" nameKey="name" innerRadius={55} outerRadius={82} paddingAngle={2}>
+                        {categoryBreakdown.map((entry, index) => (
+                          <Cell key={`${entry.name}-${index}`} fill={entry.color ?? CHART_COLORS[index % CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => currencyFmt(value)} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </ChartCard>
 
             <ChartCard title="Income vs expense trend">
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="#94a3b8"
-                      opacity={0.25}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.25} />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                     <YAxis tick={{ fontSize: 12 }} />
                     <Tooltip formatter={(value) => currencyFmt(value)} />
                     <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="income"
-                      stroke="#10b981"
-                      strokeWidth={3}
-                      dot={{ r: 3 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="expense"
-                      stroke="#ef4444"
-                      strokeWidth={3}
-                      dot={{ r: 3 }}
-                    />
+                    <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={3} dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </ChartCard>
           </div>
         </div>
+      ) : selectedBudget && budgetReport ? (
+        /* ── Budget detail report ── */
+        <BudgetDetailReport
+          budget={selectedBudget}
+          report={budgetReport}
+          fmt={fmt}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// ── Budget detail sub-component ──────────────────────────────────────────────
+
+interface ReportRow {
+  catId: string
+  category: { name: string; icon?: string } | undefined
+  allocated: number
+  spent: number
+  merchants: [string, number][]
+}
+
+function BudgetDetailReport({
+  budget,
+  report,
+  fmt,
+}: {
+  budget: ParentBudget
+  report: { totalSpent: number; rows: ReportRow[] }
+  fmt: (n: number) => string
+}) {
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+
+  const { totalSpent, rows } = report;
+  const remaining = budget.totalAmount - totalSpent;
+  const pct = budget.totalAmount > 0
+    ? Math.min((totalSpent / budget.totalAmount) * 100, 100)
+    : 0;
+  const over = totalSpent > budget.totalAmount;
+
+  function toggleCat(catId: string) {
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      next.has(catId) ? next.delete(catId) : next.add(catId);
+      return next;
+    });
+  }
+
+  const period = budgetPeriod(budget);
+
+  return (
+    <div className="space-y-4">
+      {/* Budget summary card */}
+      <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-5 py-4 space-y-3"
+        aria-label={`${budget.name} summary`}>
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">{budget.name}</h2>
+            {period && (
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                {period}
+              </span>
+            )}
+          </div>
+          {budget.description && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{budget.description}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Budget</p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white">{fmt(budget.totalAmount)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Spent</p>
+            <p className={`text-sm font-bold ${over ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"}`}>
+              {fmt(totalSpent)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Remaining</p>
+            <p className={`text-sm font-bold ${over ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+              {fmt(Math.abs(remaining))}
+            </p>
+          </div>
+        </div>
+
+        <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${over ? "bg-rose-500" : pct >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+            style={{ width: `${pct}%` }}
+            role="progressbar"
+            aria-valuenow={Math.round(pct)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`${Math.round(pct)}% of budget used`}
+          />
+        </div>
+      </section>
+
+      {/* Category breakdown with merchant drill-down */}
+      {rows.length === 0 ? (
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 text-center">
+          <span className="text-3xl" aria-hidden="true">🧾</span>
+          <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">No transactions yet</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            Add transactions and assign them to this budget to see a breakdown.
+          </p>
+        </div>
+      ) : (
+        <section aria-label="Category breakdown">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+            Spending by Category
+          </h3>
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+            {rows.map(row => {
+              const isExpanded = expandedCats.has(row.catId);
+              const pctCat = row.allocated > 0
+                ? Math.min((row.spent / row.allocated) * 100, 100)
+                : 0;
+              const overCat = row.allocated > 0 && row.spent > row.allocated;
+              const topMerchants = row.merchants.slice(0, 5);
+              const otherCount = row.merchants.length - topMerchants.length;
+
+              return (
+                <div key={row.catId}>
+                  {/* Category row */}
+                  <button
+                    type="button"
+                    onClick={() => row.merchants.length > 0 && toggleCat(row.catId)}
+                    aria-expanded={isExpanded}
+                    className={`w-full px-5 py-4 text-left transition-colors ${
+                      row.merchants.length > 0 ? "hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xl shrink-0" aria-hidden="true">
+                          {row.category?.icon ?? "📦"}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                          {row.category?.name ?? "Uncategorised"}
+                        </span>
+                        {overCat && (
+                          <span className="shrink-0 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded-full">
+                            OVER
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="text-right">
+                          <span className={`text-sm font-semibold ${overCat ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"}`}>
+                            {fmt(row.spent)}
+                          </span>
+                          {row.allocated > 0 && (
+                            <span className="text-xs text-slate-400 dark:text-slate-500"> / {fmt(row.allocated)}</span>
+                          )}
+                        </div>
+                        {row.merchants.length > 0 && (
+                          <svg
+                            width={14}
+                            height={14}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                            strokeLinecap="round"
+                            aria-hidden="true"
+                            className={`text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                          >
+                            <path d="M6 9l6 6 6-6" />
+                          </svg>
+                        )}
+                      </div>
+                    </div>
+                    {row.allocated > 0 && (
+                      <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${overCat ? "bg-rose-500" : pctCat >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+                          style={{ width: `${pctCat}%` }}
+                          role="progressbar"
+                          aria-valuenow={Math.round(pctCat)}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-label={`${Math.round(pctCat)}% used`}
+                        />
+                      </div>
+                    )}
+                  </button>
+
+                  {/* Merchant drill-down */}
+                  {isExpanded && (
+                    <div className="bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800">
+                      <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {topMerchants.map(([merchant, amount]) => (
+                          <li key={merchant} className="flex items-center justify-between px-6 py-2.5">
+                            <span className="text-sm text-slate-700 dark:text-slate-300">{merchant}</span>
+                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{fmt(amount)}</span>
+                          </li>
+                        ))}
+                        {otherCount > 0 && (
+                          <li className="flex items-center justify-between px-6 py-2.5">
+                            <span className="text-sm text-slate-400 dark:text-slate-500">
+                              + {otherCount} more
+                            </span>
+                            <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">
+                              {fmt(row.merchants.slice(5).reduce((s, [, a]) => s + a, 0))}
+                            </span>
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );
 }
 
-function ChartCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+// ── Shared ChartCard ─────────────────────────────────────────────────────────
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4">
-      <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">
-        {title}
-      </h2>
+      <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">{title}</h2>
       {children}
     </section>
   );

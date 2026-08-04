@@ -17,7 +17,8 @@ export interface Transaction {
   notes?: string
   merchant?: string
   paymentMethod?: string
-  tags?: string[]
+  /** Optional link to a ParentBudget — unset means general spending only. */
+  budgetId?: string
   createdAt: string
   updatedAt: string
 }
@@ -33,13 +34,41 @@ export interface Category {
   createdAt: string
 }
 
-/** Monthly spending limit for a category. */
+/** Monthly spending limit for a category (legacy — kept for data compatibility). */
 export interface Budget {
   id: string
   categoryId: string
   amount: number
   /** YYYY-MM */
   month: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** A high-level spending plan — a trip, event, or personal goal. */
+export interface ParentBudget {
+  id: string
+  name: string
+  description?: string
+  totalAmount: number
+  /** 'monthly' tracks a single calendar month; 'custom' tracks an arbitrary date range. */
+  budgetType: 'monthly' | 'custom'
+  /** YYYY-MM — set when budgetType === 'monthly' */
+  month?: string
+  /** YYYY-MM-DD — set when budgetType === 'custom' */
+  startDate?: string
+  /** YYYY-MM-DD — set when budgetType === 'custom' */
+  endDate?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** A category-level spending allocation within a ParentBudget. */
+export interface BudgetAllocation {
+  id: string
+  budgetId: string
+  categoryId: string
+  amount: number
   createdAt: string
   updatedAt: string
 }
@@ -78,6 +107,8 @@ export interface ExportData {
   transactions: Transaction[]
   categories: Category[]
   budgets: Budget[]
+  parentBudgets: ParentBudget[]
+  budgetAllocations: BudgetAllocation[]
   accounts: Account[]
   settings: Settings
   exportedAt: string

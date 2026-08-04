@@ -4,10 +4,9 @@ import { useStorage } from "../hooks/useStorage";
 import { useTransactions } from "../hooks/useTransactions";
 import { useCategories } from "../hooks/useCategories";
 import { useAccounts } from "../hooks/useAccounts";
-import { useBudgets } from "../hooks/useBudgets";
+import { useParentBudgets } from "../hooks/useParentBudgets";
 import { formatCurrency } from "../utils/currency";
 import { formatMonthYear, getCurrentMonth, addMonths } from "../utils/date";
-import BudgetProgress from "../features/budgets/BudgetProgress";
 import type { Transaction, Account } from "../types";
 
 export default function DashboardPage() {
@@ -16,23 +15,14 @@ export default function DashboardPage() {
   const categories = useCategories();
   const { accounts } = useAccounts();
   const [month, setMonth] = useState(getCurrentMonth());
-  const { budgets } = useBudgets(month);
+  const { parentBudgets, allocations } = useParentBudgets();
   const catMap = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
     [categories],
   );
 
-  const { income, expense, recent, spending } = useMemo(() => {
+  const { income, expense, recent } = useMemo(() => {
     const monthTxs = transactions.filter((tx) => tx.date.startsWith(month));
-    const spendMap = new Map<string, number>();
-    for (const tx of monthTxs) {
-      if (!tx.categoryId) continue;
-      if (tx.type === "expense")
-        spendMap.set(
-          tx.categoryId,
-          (spendMap.get(tx.categoryId) ?? 0) + tx.amount,
-        );
-    }
     return {
       income: monthTxs
         .filter((tx) => tx.type === "income")
@@ -43,9 +33,29 @@ export default function DashboardPage() {
       recent: transactions
         .filter((tx) => tx.date.startsWith(month))
         .slice(0, 10),
-      spending: spendMap,
     };
   }, [transactions, month]);
+
+  /** Total spent per budgetId across all transactions */
+  const budgetSpending = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const tx of transactions) {
+      if (!tx.budgetId || tx.type !== "expense") continue;
+      map.set(tx.budgetId, (map.get(tx.budgetId) ?? 0) + tx.amount);
+    }
+    return map;
+  }, [transactions]);
+
+  /** Only budgets whose period overlaps with the current dashboard month */
+  const relevantBudgets = useMemo(() => {
+    const mStart = `${month}-01`;
+    const mEnd = `${month}-31`;
+    return parentBudgets.filter((b) => {
+      const type = b.budgetType ?? "custom";
+      if (type === "monthly") return b.month === month;
+      return (b.startDate ?? "") <= mEnd && (b.endDate ?? "") >= mStart;
+    });
+  }, [parentBudgets, month]);
 
   const balance = income - expense;
   const fmt = (n: number) =>
@@ -135,7 +145,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Budget overview */}
-      {budgets.length > 0 && (
+      {relevantBudgets.length > 0 && (
         <section aria-labelledby="budgets-dash-heading">
           <h2
             id="budgets-dash-heading"
@@ -143,20 +153,55 @@ export default function DashboardPage() {
           >
             Budgets
           </h2>
-          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {budgets.map((b) => (
-                <BudgetProgress
-                  key={b.id}
-                  budget={b}
-                  category={catMap.get(b.categoryId)}
-                  spent={spending.get(b.categoryId) ?? 0}
-                  currencySymbol={settings.currencySymbol}
-                  locale={settings.locale}
-                  onClick={() => {}}
-                />
-              ))}
-            </div>
+          <div className="space-y-2">
+            {relevantBudgets.map((budget) => {
+              const spent = budgetSpending.get(budget.id) ?? 0;
+              const totalAllocated = allocations
+                .filter((a) => a.budgetId === budget.id)
+                .reduce((s, a) => s + a.amount, 0);
+              const pct = budget.totalAmount > 0
+                ? Math.min((spent / budget.totalAmount) * 100, 100)
+                : 0;
+              const over = spent > budget.totalAmount;
+              const warn = !over && pct >= 80;
+              return (
+                <div
+                  key={budget.id}
+                  className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                      {budget.name}
+                    </span>
+                    <span className={`text-xs font-semibold shrink-0 ${
+                      over ? 'text-rose-600 dark:text-rose-400' :
+                      warn ? 'text-amber-600 dark:text-amber-400' :
+                      'text-slate-500 dark:text-slate-400'
+                    }`}>
+                      {fmt(spent)} / {fmt(budget.totalAmount)}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        over ? 'bg-rose-500' : warn ? 'bg-amber-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                      role="progressbar"
+                      aria-valuenow={Math.round(pct)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`${budget.name}: ${Math.round(pct)}% used`}
+                    />
+                  </div>
+                  {totalAllocated > 0 && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                      {fmt(totalAllocated)} allocated across categories
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

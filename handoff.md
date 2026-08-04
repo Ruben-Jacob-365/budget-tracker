@@ -144,6 +144,8 @@ src/
 | 2b | ✅ | Accounts (savings + credit card), balance cards on dashboard, account picker in transactions |
 | 2c | ✅ | Transfer transaction type — From/To account pickers, balance adjusts both accounts |
 | 3 | ✅ | Budget CRUD, monthly progress bars, over-budget warnings, dashboard budget section, month navigation on both Dashboard and Budgets |
+| 3b | ✅ | Budget system redesign — ParentBudget + BudgetAllocation model, budget picker in transactions, tags removed |
+| 3c | ✅ | Budget types (monthly/custom), dashboard month-filtering, budget reports with merchant drill-down, merchant autocomplete |
 | 4 | ⬜ | Reports — Recharts charts (monthly bar, category pie, monthly comparison) |
 | 5 | ⬜ | Export / Import JSON with validation and schema migration |
 | 6 | ⬜ | PWA polish, offline hardening, performance, icons |
@@ -160,6 +162,40 @@ Phase 4 — Reports page using Recharts:
 - Monthly spending bar chart (last 6 months)
 - Category breakdown pie/donut chart for selected month
 - Income vs expense trend line
+
+## Latest Update
+
+Date: 2026-08-04
+
+Changed:
+
+- Budget system fully redesigned: replaced flat monthly-category budgets with a two-level model
+- `ParentBudget` (name, description?, totalAmount) — a named spending plan (trip, event, goal)
+- `BudgetAllocation` (budgetId, categoryId, amount) — a category slice inside a parent budget
+- `Transaction.budgetId` (optional) — links an expense to a parent budget; unset = general spending
+- `Transaction.tags` removed — was never used in UI; budget linkage is now via `budgetId`
+- DB schema version 4: new `parentBudgets` and `budgetAllocations` tables; `transactions` drops `*tags` index, gains `budgetId` index
+- `deleteParentBudget` cascades: removes all its allocations and unlinks its transactions
+- `BudgetsPage` redesigned: accordion list of parent budget cards, each expandable to show category allocations with progress bars + "Add Category" inline button
+- `BudgetForm` now creates/edits a `ParentBudget` (name + total amount)
+- `BudgetAllocationForm` (new): add/edit a category allocation within a budget; duplicate-category guard updates instead of inserting
+- `BudgetProgress` updated: now takes a `BudgetAllocation` instead of old `Budget`
+- `TransactionForm`: expense transactions show an optional budget picker (pill row); selecting a budget sets `budgetId` on the transaction
+- `TransactionsPage`: passes `parentBudgets` to `TransactionForm`
+- `DashboardPage`: budget section shows parent budget summary cards (spent vs total + progress bar); monthly category spending map removed
+- `useParentBudgets` hook: loads both `parentBudgets` and all `budgetAllocations` in one call
+- `ExportData` updated to include `parentBudgets` and `budgetAllocations`; `importData`/`clearAll`/`exportData` all updated to handle new tables
+
+Why:
+
+- Goal-based budgets (trip, event) are more useful than flat monthly category limits for most personal finance use cases
+- Two-level hierarchy (parent + allocations) gives both an overall spending target and per-category granularity
+- Budget linkage via `budgetId` on transactions is explicit and reliable; tag-based linking was implicit and fragile
+- Cascade delete on `deleteParentBudget` prevents orphaned allocations and dangling `budgetId` references in transactions
+
+Next:
+
+- Phase 4: Reports — Recharts monthly bar chart, category pie chart, monthly comparison
 
 ## Project
 
