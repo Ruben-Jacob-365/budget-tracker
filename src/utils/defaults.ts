@@ -20,6 +20,7 @@ export const DEFAULT_CATEGORIES: Omit<Category, 'id' | 'createdAt'>[] = [
   // Expense
   { name: 'Food',          type: 'expense', isDefault: true, color: '#f97316', icon: '🍕' },
   { name: 'Groceries',     type: 'expense', isDefault: true, color: '#84cc16', icon: '🛒' },
+  { name: 'Gym', type: 'expense', isDefault: true, color: '#6366f1', icon: '💪' },
   { name: 'Transport',     type: 'expense', isDefault: true, color: '#3b82f6', icon: '🚌' },
   { name: 'Fuel',          type: 'expense', isDefault: true, color: '#ef4444', icon: '⛽' },
   { name: 'Rent',          type: 'expense', isDefault: true, color: '#8b5cf6', icon: '🏠' },
@@ -29,7 +30,6 @@ export const DEFAULT_CATEGORIES: Omit<Category, 'id' | 'createdAt'>[] = [
   { name: 'Healthcare',    type: 'expense', isDefault: true, color: '#22c55e', icon: '🏥' },
   { name: 'Education',     type: 'expense', isDefault: true, color: '#eab308', icon: '📚' },
   { name: 'Travel',        type: 'expense', isDefault: true, color: '#0ea5e9', icon: '✈️' },
-  { name: 'Subscriptions', type: 'expense', isDefault: true, color: '#6366f1', icon: '🔔' },
   { name: 'Insurance',     type: 'expense', isDefault: true, color: '#94a3b8', icon: '🛡️' },
   { name: 'Investments',   type: 'expense', isDefault: true, color: '#10b981', icon: '📊' },
   { name: 'Gifts',         type: 'expense', isDefault: true, color: '#ec4899', icon: '🎁' },
