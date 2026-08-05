@@ -29,9 +29,24 @@ export function getCurrentMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-/** Returns today as YYYY-MM-DD. */
+/** Returns a local YYYY-MM-DD string for a given Date object. */
+export function toLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Returns today as local YYYY-MM-DD. */
 export function getTodayISO(): string {
-  return new Date().toISOString().slice(0, 10)
+  return toLocalDateString(new Date())
+}
+
+/** Returns yesterday as local YYYY-MM-DD. */
+export function getYesterdayISO(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return toLocalDateString(d)
 }
 
 /** Shift a YYYY-MM month string by delta months. */
@@ -41,11 +56,11 @@ export function addMonths(month: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-/** Formats ISO timestamp or date-time string to local time (e.g. 10:30 AM). */
+/** Formats ISO timestamp or date-time string to 24h local time (e.g. 14:30 / 00:31). */
 export function formatTime(dateStr?: string, locale = 'en-IN'): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true })
+  return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
