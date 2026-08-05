@@ -22,7 +22,11 @@ function groupByDay(transactions: Transaction[]): DayGroup[] {
     else if (tx.type === "expense") g.expense += tx.amount;
     // transfers are neutral — excluded from day totals
   }
-  return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  const groups = Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  for (const g of groups) {
+    g.items.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+  }
+  return groups;
 }
 
 interface Props {

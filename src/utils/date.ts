@@ -40,3 +40,12 @@ export function addMonths(month: string, delta: number): string {
   const d = new Date(y, m - 1 + delta, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
+
+/** Formats ISO timestamp or date-time string to local time (e.g. 10:30 AM). */
+export function formatTime(dateStr?: string, locale = 'en-IN'): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+

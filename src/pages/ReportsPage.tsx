@@ -166,7 +166,7 @@ export default function ReportsPage() {
           <option value="overview">📊 Overview (all months)</option>
           {parentBudgets.map(b => (
             <option key={b.id} value={b.id}>
-              🎯 {b.name}{budgetPeriod(b) ? ` — ${budgetPeriod(b)}` : ""}
+              🎯 {b.name}
             </option>
           ))}
         </select>

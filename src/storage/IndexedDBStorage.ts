@@ -44,6 +44,18 @@ export class IndexedDBStorage implements StorageService {
         createdAt: now(),
       }))
       tasks.push(db.categories.bulkPut(cats))
+    } else {
+      // Migrate legacy default category 'Subscriptions' -> 'Gym' for existing databases
+      tasks.push((async () => {
+        const subCat = await db.categories.where('name').equalsIgnoreCase('subscriptions').first()
+        if (subCat) {
+          await db.categories.update(subCat.id, {
+            name: 'Gym',
+            icon: '💪',
+            color: '#6366f1',
+          })
+        }
+      })())
     }
 
     if (!meta) {
@@ -58,7 +70,12 @@ export class IndexedDBStorage implements StorageService {
   // --- Transactions ---
 
   async getTransactions(): Promise<Transaction[]> {
-    return db.transactions.orderBy('date').reverse().toArray()
+    const txs = await db.transactions.orderBy('date').reverse().toArray()
+    return txs.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.date).getTime()
+      const timeB = new Date(b.createdAt || b.date).getTime()
+      return timeB - timeA
+    })
   }
 
   async getTransaction(id: string): Promise<Transaction | undefined> {
