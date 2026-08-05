@@ -2,11 +2,14 @@
 import { useState } from 'react'
 import { useStorage } from '../hooks/useStorage'
 import { useAccounts } from '../hooks/useAccounts'
+import { useCategories } from '../hooks/useCategories'
 import BottomSheet from '../components/ui/BottomSheet'
 import AccountForm from '../features/accounts/AccountForm'
 import AccountCard from '../features/accounts/AccountCard'
+import CategoryForm from '../features/categories/CategoryForm'
+import CategoryCard from '../features/categories/CategoryCard'
 import { PlusIcon } from '../components/icons/NavIcons'
-import type { Account, ThemeMode } from '../types'
+import type { Account, Category, ThemeMode } from '../types'
 
 const THEMES: { value: ThemeMode; label: string; emoji: string }[] = [
   { value: 'light',  label: 'Light',  emoji: '☀️' },
@@ -17,12 +20,21 @@ const THEMES: { value: ThemeMode; label: string; emoji: string }[] = [
 export default function SettingsPage() {
   const { storage, settings, refreshSettings } = useStorage()
   const { accounts, reload: reloadAccounts } = useAccounts()
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<Account | undefined>()
+  const { categories, reload: reloadCategories } = useCategories()
 
-  function openAdd() { setEditTarget(undefined); setSheetOpen(true) }
-  function openEdit(acc: Account) { setEditTarget(acc); setSheetOpen(true) }
-  function handleAccountSuccess() { setSheetOpen(false); reloadAccounts() }
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false)
+  const [editAccountTarget, setEditAccountTarget] = useState<Account | undefined>()
+
+  const [catSheetOpen, setCatSheetOpen] = useState(false)
+  const [editCatTarget, setEditCatTarget] = useState<Category | undefined>()
+
+  function openAddAccount() { setEditAccountTarget(undefined); setAccountSheetOpen(true) }
+  function openEditAccount(acc: Account) { setEditAccountTarget(acc); setAccountSheetOpen(true) }
+  function handleAccountSuccess() { setAccountSheetOpen(false); reloadAccounts() }
+
+  function openAddCategory() { setEditCatTarget(undefined); setCatSheetOpen(true) }
+  function openEditCategory(cat: Category) { setEditCatTarget(cat); setCatSheetOpen(true) }
+  function handleCategorySuccess() { setCatSheetOpen(false); reloadCategories() }
 
   async function handleTheme(theme: ThemeMode) {
     await storage.updateSettings({ theme })
@@ -34,13 +46,42 @@ export default function SettingsPage() {
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Settings</h1>
 
+        {/* Categories */}
+        <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h2 className="font-semibold text-slate-900 dark:text-white">Categories</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Customize income & expense categories</p>
+            </div>
+            <button
+              type="button"
+              onClick={openAddCategory}
+              className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
+            >
+              <PlusIcon size={16} />
+              Add
+            </button>
+          </div>
+          {categories.length === 0 ? (
+            <div className="px-5 py-6 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400">No categories found.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-96 overflow-y-auto">
+              {categories.map(cat => (
+                <CategoryCard key={cat.id} category={cat} onEdit={() => openEditCategory(cat)} />
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* Accounts */}
         <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
             <h2 className="font-semibold text-slate-900 dark:text-white">Accounts</h2>
             <button
               type="button"
-              onClick={openAdd}
+              onClick={openAddAccount}
               className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
               <PlusIcon size={16} />
@@ -54,7 +95,7 @@ export default function SettingsPage() {
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {accounts.map(acc => (
-                <AccountCard key={acc.id} account={acc} onEdit={() => openEdit(acc)} />
+                <AccountCard key={acc.id} account={acc} onEdit={() => openEditAccount(acc)} />
               ))}
             </div>
           )}
@@ -116,13 +157,25 @@ export default function SettingsPage() {
         </section>
       </div>
 
+      {/* Account Sheet */}
       <BottomSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        title={editTarget ? 'Edit Account' : 'Add Account'}
+        open={accountSheetOpen}
+        onClose={() => setAccountSheetOpen(false)}
+        title={editAccountTarget ? 'Edit Account' : 'Add Account'}
       >
-        {sheetOpen && (
-          <AccountForm account={editTarget} onSuccess={handleAccountSuccess} />
+        {accountSheetOpen && (
+          <AccountForm account={editAccountTarget} onSuccess={handleAccountSuccess} />
+        )}
+      </BottomSheet>
+
+      {/* Category Sheet */}
+      <BottomSheet
+        open={catSheetOpen}
+        onClose={() => setCatSheetOpen(false)}
+        title={editCatTarget ? 'Edit Category' : 'Add Category'}
+      >
+        {catSheetOpen && (
+          <CategoryForm category={editCatTarget} onSuccess={handleCategorySuccess} />
         )}
       </BottomSheet>
     </>

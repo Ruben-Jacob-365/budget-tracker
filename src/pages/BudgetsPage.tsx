@@ -26,7 +26,7 @@ export default function BudgetsPage() {
   const { settings } = useStorage();
   const { parentBudgets, allocations, loading, reload } = useParentBudgets();
   const { transactions } = useTransactions();
-  const categories = useCategories();
+  const { categories } = useCategories();
 
   // Accordion — which parent budget rows are expanded
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());

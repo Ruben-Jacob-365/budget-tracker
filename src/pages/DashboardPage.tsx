@@ -12,7 +12,7 @@ import type { Transaction, Account } from "../types";
 export default function DashboardPage() {
   const { settings } = useStorage();
   const { transactions, loading } = useTransactions();
-  const categories = useCategories();
+  const { categories } = useCategories();
   const { accounts } = useAccounts();
   const [month, setMonth] = useState(getCurrentMonth());
   const { parentBudgets, allocations } = useParentBudgets();

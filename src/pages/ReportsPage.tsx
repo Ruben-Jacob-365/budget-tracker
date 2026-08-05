@@ -40,7 +40,7 @@ function budgetPeriod(b: ParentBudget): string {
 export default function ReportsPage() {
   const { settings } = useStorage();
   const { transactions } = useTransactions();
-  const categories = useCategories();
+  const { categories } = useCategories();
   const { parentBudgets, allocations } = useParentBudgets();
   const [month, setMonth] = useState(getCurrentMonth());
   const [selectedBudgetId, setSelectedBudgetId] = useState<string>("overview");

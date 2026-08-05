@@ -44,18 +44,6 @@ export class IndexedDBStorage implements StorageService {
         createdAt: now(),
       }))
       tasks.push(db.categories.bulkPut(cats))
-    } else {
-      // Migrate legacy default category 'Subscriptions' -> 'Gym' for existing databases
-      tasks.push((async () => {
-        const subCat = await db.categories.where('name').equalsIgnoreCase('subscriptions').first()
-        if (subCat) {
-          await db.categories.update(subCat.id, {
-            name: 'Gym',
-            icon: '💪',
-            color: '#6366f1',
-          })
-        }
-      })())
     }
 
     if (!meta) {

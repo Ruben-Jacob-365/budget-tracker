@@ -14,7 +14,7 @@ import type { Transaction } from '../types'
 export default function TransactionsPage() {
   const { settings } = useStorage()
   const { transactions, loading, reload } = useTransactions()
-  const categories = useCategories()
+  const { categories } = useCategories()
   const { accounts } = useAccounts()
   const { parentBudgets } = useParentBudgets()
 
