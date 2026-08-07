@@ -10,7 +10,7 @@ import BudgetAllocationForm from "../features/budgets/BudgetAllocationForm";
 import BudgetProgress from "../features/budgets/BudgetProgress";
 import { PlusIcon } from "../components/icons/NavIcons";
 import { formatCurrency } from "../utils/currency";
-import { formatMonthYear, formatDate } from "../utils/date";
+import { formatMonthYear, formatDate, getBudgetPeriodStats } from "../utils/date";
 import type { ParentBudget, BudgetAllocation } from "../types";
 
 /** Returns a human-readable period label for a budget. */
@@ -159,6 +159,14 @@ export default function BudgetsPage() {
               const warn = !over && pct >= 80;
               const overAllocated = totalAllocated > budget.totalAmount;
 
+              const stats = getBudgetPeriodStats(budget);
+              const daysElapsed = Math.max(1, stats.daysElapsed);
+              const avgSpendPerDay = totalSpent / daysElapsed;
+              const remainingAmount = Math.max(0, budget.totalAmount - totalSpent);
+              const safeToSpendPerDay = stats.isOngoing && stats.daysRemaining > 0
+                ? remainingAmount / stats.daysRemaining
+                : 0;
+
               return (
                 <div
                   key={budget.id}
@@ -255,8 +263,34 @@ export default function BudgetsPage() {
                       </div>
                       <div className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
                         <span>{budgetAllocs.length} categor{budgetAllocs.length === 1 ? 'y' : 'ies'} · {fmt(totalAllocated)} allocated</span>
-                        <span>{fmt(Math.max(0, budget.totalAmount - totalSpent))} remaining</span>
+                        <span>{fmt(remainingAmount)} remaining</span>
                       </div>
+                    </div>
+
+                    {/* Daily Spending Metrics */}
+                    <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                      <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5">
+                        <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Avg Spend / Day</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white mt-0.5">
+                          {fmt(avgSpendPerDay)}<span className="text-[10px] font-normal text-slate-400">/day</span>
+                        </div>
+                      </div>
+
+                      {stats.isOngoing ? (
+                        <div className="bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl p-2.5 border border-indigo-100/60 dark:border-indigo-900/40">
+                          <div className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">Safe to Spend</div>
+                          <div className={`text-sm font-semibold mt-0.5 ${over ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-700 dark:text-indigo-300'}`}>
+                            {fmt(safeToSpendPerDay)}<span className="text-[10px] font-normal opacity-75">/day</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5">
+                          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Status</div>
+                          <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
+                            {stats.daysElapsed > 0 ? 'Completed' : 'Upcoming'}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

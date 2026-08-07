@@ -55,12 +55,63 @@ export function addMonths(month: string, delta: number): string {
   const d = new Date(y, m - 1 + delta, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
-
 /** Formats ISO timestamp or date-time string to 24h local time (e.g. 14:30 / 00:31). */
 export function formatTime(dateStr?: string, locale = 'en-IN'): string {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return ''
   return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+import type { ParentBudget } from '../types'
+
+export interface BudgetPeriodStats {
+  daysElapsed: number
+  daysRemaining: number
+  totalDays: number
+  isOngoing: boolean
+}
+
+/** Computes period stats (days elapsed, days remaining, active status) for a budget. */
+export function getBudgetPeriodStats(b: ParentBudget): BudgetPeriodStats {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayTime = today.getTime()
+
+  let startDate: Date
+  let endDate: Date
+
+  const type = b.budgetType ?? 'custom'
+  if (type === 'monthly' && b.month) {
+    const [year, m] = b.month.split('-').map(Number)
+    startDate = new Date(year, m - 1, 1)
+    endDate = new Date(year, m, 0)
+  } else if (b.startDate && b.endDate) {
+    const [sy, sm, sd] = b.startDate.split('-').map(Number)
+    const [ey, em, ed] = b.endDate.split('-').map(Number)
+    startDate = new Date(sy, sm - 1, sd)
+    endDate = new Date(ey, em - 1, ed)
+  } else {
+    const now = new Date()
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  }
+
+  startDate.setHours(0, 0, 0, 0)
+  endDate.setHours(0, 0, 0, 0)
+
+  const startTime = startDate.getTime()
+  const endTime = endDate.getTime()
+  const totalDays = Math.max(1, Math.round((endTime - startTime) / 86400000) + 1)
+
+  if (todayTime < startTime) {
+    return { daysElapsed: 0, daysRemaining: totalDays, totalDays, isOngoing: false }
+  } else if (todayTime > endTime) {
+    return { daysElapsed: totalDays, daysRemaining: 0, totalDays, isOngoing: false }
+  } else {
+    const daysElapsed = Math.max(1, Math.round((todayTime - startTime) / 86400000) + 1)
+    const daysRemaining = Math.max(1, Math.round((endTime - todayTime) / 86400000) + 1)
+    return { daysElapsed, daysRemaining, totalDays, isOngoing: true }
+  }
 }
 
