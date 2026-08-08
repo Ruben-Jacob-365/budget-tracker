@@ -63,6 +63,24 @@ export function formatTime(dateStr?: string, locale = 'en-IN'): string {
   return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
+/** Returns current local time as HH:mm string. */
+export function getCurrentTime24(): string {
+  const d = new Date()
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+/** Extracts HH:mm local time string from an ISO timestamp or date string. */
+export function getTime24FromDate(dateStr?: string): string {
+  if (!dateStr) return getCurrentTime24()
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return getCurrentTime24()
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
 import type { ParentBudget } from '../types'
 
 export interface BudgetPeriodStats {

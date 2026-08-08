@@ -70,14 +70,14 @@ export class IndexedDBStorage implements StorageService {
     return db.transactions.get(id)
   }
 
-  async addTransaction(data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> {
-    const tx: Transaction = { ...data, id: uid(), createdAt: now(), updatedAt: now() }
+  async addTransaction(data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: string }): Promise<Transaction> {
+    const tx: Transaction = { ...data, id: uid(), createdAt: data.createdAt ?? now(), updatedAt: now() }
     await db.transactions.put(tx)
     await this._applyBalance(tx)
     return tx
   }
 
-  async updateTransaction(id: string, updates: Partial<Omit<Transaction, 'id' | 'createdAt'>>): Promise<Transaction> {
+  async updateTransaction(id: string, updates: Partial<Omit<Transaction, 'id'>>): Promise<Transaction> {
     const existing = await db.transactions.get(id)
     if (!existing) throw new Error(`Transaction "${id}" not found`)
     await this._reverseBalance(existing)

@@ -8,8 +8,8 @@ export interface StorageService {
   // --- Transactions ---
   getTransactions(): Promise<Transaction[]>
   getTransaction(id: string): Promise<Transaction | undefined>
-  addTransaction(data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction>
-  updateTransaction(id: string, updates: Partial<Omit<Transaction, 'id' | 'createdAt'>>): Promise<Transaction>
+  addTransaction(data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: string }): Promise<Transaction>
+  updateTransaction(id: string, updates: Partial<Omit<Transaction, 'id'>>): Promise<Transaction>
   deleteTransaction(id: string): Promise<void>
 
   // --- Categories ---
