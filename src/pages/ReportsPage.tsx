@@ -21,6 +21,7 @@ import { useCategories } from "../hooks/useCategories";
 import { useParentBudgets } from "../hooks/useParentBudgets";
 import { formatCurrency } from "../utils/currency";
 import { addMonths, formatMonthYear, formatDate, getCurrentMonth } from "../utils/date";
+import MonthPicker from "../components/ui/MonthPicker";
 import type { ParentBudget } from "../types";
 
 const CHART_COLORS = [
@@ -60,6 +61,22 @@ export default function ReportsPage() {
     return fmt(numeric);
   };
 
+  // Filter budgets by selected month for the dropdown selector
+  const filteredBudgetsForMonth = useMemo(() => {
+    return parentBudgets.filter((b) => {
+      const type = b.budgetType ?? "custom";
+      if (type === "monthly") return b.month === month;
+      if (b.startDate && b.endDate) {
+        const monthStart = `${month}-01`;
+        const [y, m] = month.split("-").map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+        return b.startDate <= monthEnd && b.endDate >= monthStart;
+      }
+      return true;
+    });
+  }, [parentBudgets, month]);
+
   // ── Overview charts ──────────────────────────────────────────────────────
 
   const chartData = useMemo(() => {
@@ -93,13 +110,13 @@ export default function ReportsPage() {
 
   // ── Budget-specific report ───────────────────────────────────────────────
 
-  const selectedBudget = parentBudgets.find(b => b.id === selectedBudgetId);
+  const selectedBudget = filteredBudgetsForMonth.find(b => b.id === selectedBudgetId);
 
   const budgetReport = useMemo(() => {
     if (!selectedBudget) return null;
 
     const budgetTxs = transactions.filter(
-      tx => tx.budgetId === selectedBudget.id && tx.type === "expense",
+      tx => tx.budgetId === selectedBudget.id && tx.type === "expense" && tx.date.startsWith(month),
     );
     const totalSpent = budgetTxs.reduce((s, tx) => s + tx.amount, 0);
 
@@ -142,7 +159,7 @@ export default function ReportsPage() {
       .sort((a, b) => b.spent - a.spent);
 
     return { totalSpent, rows };
-  }, [selectedBudget, transactions, allocations, catMap]);
+  }, [selectedBudget, transactions, allocations, catMap, month]);
 
   const isEmpty = transactions.length === 0;
 
@@ -151,6 +168,9 @@ export default function ReportsPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Reports</h1>
       </div>
+
+      {/* Month Selector */}
+      <MonthPicker month={month} onChange={setMonth} />
 
       {/* Budget selector */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3">
@@ -163,8 +183,8 @@ export default function ReportsPage() {
           onChange={e => setSelectedBudgetId(e.target.value)}
           className="w-full bg-transparent text-sm font-semibold text-slate-900 dark:text-white focus:outline-none"
         >
-          <option value="overview">📊 Overview (all months)</option>
-          {parentBudgets.map(b => (
+          <option value="overview">📊 Overview ({formatMonthYear(month)})</option>
+          {filteredBudgetsForMonth.map(b => (
             <option key={b.id} value={b.id}>
               🎯 {b.name}
             </option>
@@ -180,21 +200,9 @@ export default function ReportsPage() {
             Add transactions to unlock trends and insights.
           </p>
         </div>
-      ) : selectedBudgetId === "overview" ? (
+      ) : selectedBudgetId === "overview" || !selectedBudget ? (
         /* ── Overview mode ── */
         <div className="space-y-4">
-          {/* Month navigation for overview charts */}
-          <div className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3">
-            <button type="button" onClick={() => setMonth(m => addMonths(m, -1))} aria-label="Previous month"
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <span className="text-sm font-semibold text-slate-900 dark:text-white">{formatMonthYear(month)}</span>
-            <button type="button" onClick={() => setMonth(m => addMonths(m, 1))} aria-label="Next month"
-              className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
-            </button>
-          </div>
 
           <ChartCard title="Spending by month (last 6 months)">
             <div className="h-72">

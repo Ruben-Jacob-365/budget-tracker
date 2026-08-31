@@ -6,6 +6,8 @@ import { useCategories } from '../hooks/useCategories'
 import { useAccounts } from '../hooks/useAccounts'
 import { useParentBudgets } from '../hooks/useParentBudgets'
 import { useStorage } from '../hooks/useStorage'
+import { getCurrentMonth } from '../utils/date'
+import MonthPicker from '../components/ui/MonthPicker'
 import BottomSheet from '../components/ui/BottomSheet'
 import TransactionForm from '../features/transactions/TransactionForm'
 import TransactionList from '../features/transactions/TransactionList'
@@ -17,6 +19,11 @@ export default function TransactionsPage() {
   const { categories } = useCategories()
   const { accounts } = useAccounts()
   const { parentBudgets } = useParentBudgets()
+  const [month, setMonth] = useState(getCurrentMonth())
+
+  const monthTransactions = useMemo(() => {
+    return transactions.filter(tx => tx.date.startsWith(month))
+  }, [transactions, month])
 
   /** Unique merchants sorted by how often they appear (most frequent first). */
   const merchants = useMemo(() => {
@@ -62,13 +69,16 @@ export default function TransactionsPage() {
           </button>
         </div>
 
+        {/* Month Selector */}
+        <MonthPicker month={month} onChange={setMonth} />
+
         {loading ? (
           <div className="flex justify-center py-12" role="status" aria-label="Loading transactions">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
           <TransactionList
-            transactions={transactions}
+            transactions={monthTransactions}
             categories={categories}
             accounts={accounts}
             currencySymbol={settings.currencySymbol}

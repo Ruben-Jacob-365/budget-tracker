@@ -10,7 +10,8 @@ import BudgetAllocationForm from "../features/budgets/BudgetAllocationForm";
 import BudgetProgress from "../features/budgets/BudgetProgress";
 import { PlusIcon } from "../components/icons/NavIcons";
 import { formatCurrency } from "../utils/currency";
-import { formatMonthYear, formatDate, getBudgetPeriodStats } from "../utils/date";
+import { formatMonthYear, formatDate, getBudgetPeriodStats, getCurrentMonth } from "../utils/date";
+import MonthPicker from "../components/ui/MonthPicker";
 import type { ParentBudget, BudgetAllocation } from "../types";
 
 /** Returns a human-readable period label for a budget. */
@@ -27,6 +28,23 @@ export default function BudgetsPage() {
   const { parentBudgets, allocations, loading, reload } = useParentBudgets();
   const { transactions } = useTransactions();
   const { categories } = useCategories();
+  const [month, setMonth] = useState(getCurrentMonth());
+
+  // Filter budgets by selected month
+  const filteredBudgets = useMemo(() => {
+    return parentBudgets.filter((b) => {
+      const type = b.budgetType ?? "custom";
+      if (type === "monthly") return b.month === month;
+      if (b.startDate && b.endDate) {
+        const monthStart = `${month}-01`;
+        const [y, m] = month.split("-").map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        const monthEnd = `${month}-${String(lastDay).padStart(2, "0")}`;
+        return b.startDate <= monthEnd && b.endDate >= monthStart;
+      }
+      return true;
+    });
+  }, [parentBudgets, month]);
 
   // Accordion — which parent budget rows are expanded
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -50,13 +68,14 @@ export default function BudgetsPage() {
     const map = new Map<string, Map<string, number>>();
     for (const tx of transactions) {
       if (!tx.budgetId || tx.type !== "expense") continue;
+      if (!tx.date.startsWith(month)) continue;
       if (!map.has(tx.budgetId)) map.set(tx.budgetId, new Map());
       const catSpend = map.get(tx.budgetId)!;
       const catId = tx.categoryId ?? "";
       catSpend.set(catId, (catSpend.get(catId) ?? 0) + tx.amount);
     }
     return map;
-  }, [transactions]);
+  }, [transactions, month]);
 
   const budgetTotalSpent = (budgetId: string) => {
     const catMap = spending.get(budgetId);
@@ -127,6 +146,9 @@ export default function BudgetsPage() {
           </button>
         </div>
 
+        {/* Month Selector */}
+        <MonthPicker month={month} onChange={setMonth} />
+
         {loading ? (
           <div
             className="flex justify-center py-12"
@@ -135,11 +157,11 @@ export default function BudgetsPage() {
           >
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : parentBudgets.length === 0 ? (
+        ) : filteredBudgets.length === 0 ? (
           <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 text-center">
             <span className="text-4xl" aria-hidden="true">🎯</span>
             <p className="mt-3 font-semibold text-slate-700 dark:text-slate-300">
-              No budgets yet
+              No budgets for {formatMonthYear(month)}
             </p>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Tap <strong>New Budget</strong> to create a spending plan.
@@ -147,7 +169,7 @@ export default function BudgetsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {parentBudgets.map((budget) => {
+            {filteredBudgets.map((budget) => {
               const budgetAllocs = allocationsForBudget(budget.id);
               const totalAllocated = budgetAllocs.reduce((s, a) => s + a.amount, 0);
               const totalSpent = budgetTotalSpent(budget.id);
