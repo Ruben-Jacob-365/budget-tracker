@@ -108,6 +108,45 @@ export default function ReportsPage() {
       .sort((a, b) => b.value - a.value);
   }, [transactions, month, catMap]);
 
+  const overviewReport = useMemo(() => {
+    const monthTxs = transactions.filter(
+      tx => tx.date.startsWith(month),
+    );
+    const incomeTxs = monthTxs.filter(tx => tx.type === "income");
+    const expenseTxs = monthTxs.filter(tx => tx.type === "expense");
+
+    const totalIncome = incomeTxs.reduce((s, tx) => s + tx.amount, 0);
+    const totalExpense = expenseTxs.reduce((s, tx) => s + tx.amount, 0);
+    const netSavings = totalIncome - totalExpense;
+
+    const byCategory = new Map<
+      string,
+      { total: number; merchants: Map<string, number> }
+    >();
+
+    for (const tx of expenseTxs) {
+      const catId = tx.categoryId ?? "__uncat__";
+      if (!byCategory.has(catId)) byCategory.set(catId, { total: 0, merchants: new Map() });
+      const entry = byCategory.get(catId)!;
+      entry.total += tx.amount;
+      const merchant = tx.merchant?.trim() || "Unknown";
+      entry.merchants.set(merchant, (entry.merchants.get(merchant) ?? 0) + tx.amount);
+    }
+
+    const rows = Array.from(byCategory.keys())
+      .map(catId => ({
+        catId,
+        category: catMap.get(catId),
+        allocated: 0,
+        spent: byCategory.get(catId)?.total ?? 0,
+        merchants: Array.from(byCategory.get(catId)!.merchants.entries())
+          .sort((a, b) => b[1] - a[1]),
+      }))
+      .sort((a, b) => b.spent - a.spent);
+
+    return { totalIncome, totalExpense, netSavings, rows };
+  }, [transactions, month, catMap]);
+
   // ── Budget-specific report ───────────────────────────────────────────────
 
   const selectedBudget = filteredBudgetsForMonth.find(b => b.id === selectedBudgetId);
@@ -203,6 +242,49 @@ export default function ReportsPage() {
       ) : selectedBudgetId === "overview" || !selectedBudget ? (
         /* ── Overview mode ── */
         <div className="space-y-4">
+          {/* Monthly Income & Expense Summary Card */}
+          <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-3" aria-label="Monthly overview summary">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Monthly Summary — {formatMonthYear(month)}
+            </h2>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 border border-emerald-100 dark:border-emerald-900/30">
+                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Income</p>
+                <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                  +{fmt(overviewReport.totalIncome)}
+                </p>
+              </div>
+              <div className="bg-rose-50 dark:bg-rose-900/20 rounded-xl p-3 border border-rose-100 dark:border-rose-900/30">
+                <p className="text-xs font-medium text-rose-700 dark:text-rose-300">Expense</p>
+                <p className="text-base font-bold text-rose-600 dark:text-rose-400 mt-1">
+                  -{fmt(overviewReport.totalExpense)}
+                </p>
+              </div>
+              <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3 border border-indigo-100 dark:border-indigo-900/30">
+                <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Net</p>
+                <p className={`text-base font-bold mt-1 ${overviewReport.netSavings >= 0 ? "text-indigo-600 dark:text-indigo-400" : "text-rose-600 dark:text-rose-400"}`}>
+                  {overviewReport.netSavings >= 0 ? "+" : ""}{fmt(overviewReport.netSavings)}
+                </p>
+              </div>
+            </div>
+          </section>
+          {/* Category-wise breakdown for the month — FIRST item in overview */}
+          <section aria-label="Monthly category breakdown">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Spending by Category ({formatMonthYear(month)})
+            </h2>
+            {overviewReport.rows.length === 0 ? (
+              <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 text-center">
+                <span className="text-3xl" aria-hidden="true">🧾</span>
+                <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-300">No expenses this month</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                  Add expense transactions for {formatMonthYear(month)} to see a category breakdown.
+                </p>
+              </div>
+            ) : (
+              <CategoryRowsList rows={overviewReport.rows} fmt={fmt} />
+            )}
+          </section>
 
           <ChartCard title="Spending by month (last 6 months)">
             <div className="h-72">
@@ -289,22 +371,12 @@ function BudgetDetailReport({
   report: { totalSpent: number; rows: ReportRow[] }
   fmt: (n: number) => string
 }) {
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
-
   const { totalSpent, rows } = report;
   const remaining = budget.totalAmount - totalSpent;
   const pct = budget.totalAmount > 0
     ? Math.min((totalSpent / budget.totalAmount) * 100, 100)
     : 0;
   const over = totalSpent > budget.totalAmount;
-
-  function toggleCat(catId: string) {
-    setExpandedCats(prev => {
-      const next = new Set(prev);
-      next.has(catId) ? next.delete(catId) : next.add(catId);
-      return next;
-    });
-  }
 
   const period = budgetPeriod(budget);
 
@@ -373,111 +445,135 @@ function BudgetDetailReport({
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
             Spending by Category
           </h3>
-          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-            {rows.map(row => {
-              const isExpanded = expandedCats.has(row.catId);
-              const pctCat = row.allocated > 0
-                ? Math.min((row.spent / row.allocated) * 100, 100)
-                : 0;
-              const overCat = row.allocated > 0 && row.spent > row.allocated;
-              const topMerchants = row.merchants.slice(0, 5);
-              const otherCount = row.merchants.length - topMerchants.length;
-
-              return (
-                <div key={row.catId}>
-                  {/* Category row */}
-                  <button
-                    type="button"
-                    onClick={() => row.merchants.length > 0 && toggleCat(row.catId)}
-                    aria-expanded={isExpanded}
-                    className={`w-full px-5 py-4 text-left transition-colors ${
-                      row.merchants.length > 0 ? "hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xl shrink-0" aria-hidden="true">
-                          {row.category?.icon ?? "📦"}
-                        </span>
-                        <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                          {row.category?.name ?? "Uncategorised"}
-                        </span>
-                        {overCat && (
-                          <span className="shrink-0 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded-full">
-                            OVER
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className="text-right">
-                          <span className={`text-sm font-semibold ${overCat ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"}`}>
-                            {fmt(row.spent)}
-                          </span>
-                          {row.allocated > 0 && (
-                            <span className="text-xs text-slate-400 dark:text-slate-500"> / {fmt(row.allocated)}</span>
-                          )}
-                        </div>
-                        {row.merchants.length > 0 && (
-                          <svg
-                            width={14}
-                            height={14}
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={2.5}
-                            strokeLinecap="round"
-                            aria-hidden="true"
-                            className={`text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
-                          >
-                            <path d="M6 9l6 6 6-6" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                    {row.allocated > 0 && (
-                      <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${overCat ? "bg-rose-500" : pctCat >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
-                          style={{ width: `${pctCat}%` }}
-                          role="progressbar"
-                          aria-valuenow={Math.round(pctCat)}
-                          aria-valuemin={0}
-                          aria-valuemax={100}
-                          aria-label={`${Math.round(pctCat)}% used`}
-                        />
-                      </div>
-                    )}
-                  </button>
-
-                  {/* Merchant drill-down */}
-                  {isExpanded && (
-                    <div className="bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800">
-                      <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                        {topMerchants.map(([merchant, amount]) => (
-                          <li key={merchant} className="flex items-center justify-between px-6 py-2.5">
-                            <span className="text-sm text-slate-700 dark:text-slate-300">{merchant}</span>
-                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{fmt(amount)}</span>
-                          </li>
-                        ))}
-                        {otherCount > 0 && (
-                          <li className="flex items-center justify-between px-6 py-2.5">
-                            <span className="text-sm text-slate-400 dark:text-slate-500">
-                              + {otherCount} more
-                            </span>
-                            <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">
-                              {fmt(row.merchants.slice(5).reduce((s, [, a]) => s + a, 0))}
-                            </span>
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <CategoryRowsList rows={rows} fmt={fmt} />
         </section>
       )}
+    </div>
+  );
+}
+
+// ── Reusable Category Breakdown Rows with Merchant Drill-down ─────────────────
+
+function CategoryRowsList({
+  rows,
+  fmt,
+}: {
+  rows: ReportRow[]
+  fmt: (n: number) => string
+}) {
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+
+  function toggleCat(catId: string) {
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      next.has(catId) ? next.delete(catId) : next.add(catId);
+      return next;
+    });
+  }
+
+  return (
+    <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+      {rows.map(row => {
+        const isExpanded = expandedCats.has(row.catId);
+        const pctCat = row.allocated > 0
+          ? Math.min((row.spent / row.allocated) * 100, 100)
+          : 0;
+        const overCat = row.allocated > 0 && row.spent > row.allocated;
+        const topMerchants = row.merchants.slice(0, 5);
+        const otherCount = row.merchants.length - topMerchants.length;
+
+        return (
+          <div key={row.catId}>
+            {/* Category row */}
+            <button
+              type="button"
+              onClick={() => row.merchants.length > 0 && toggleCat(row.catId)}
+              aria-expanded={isExpanded}
+              className={`w-full px-5 py-4 text-left transition-colors ${
+                row.merchants.length > 0 ? "hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xl shrink-0" aria-hidden="true">
+                    {row.category?.icon ?? "📦"}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                    {row.category?.name ?? "Uncategorised"}
+                  </span>
+                  {overCat && (
+                    <span className="shrink-0 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-1.5 py-0.5 rounded-full">
+                      OVER
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="text-right">
+                    <span className={`text-sm font-semibold ${overCat ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"}`}>
+                      {fmt(row.spent)}
+                    </span>
+                    {row.allocated > 0 && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500"> / {fmt(row.allocated)}</span>
+                    )}
+                  </div>
+                  {row.merchants.length > 0 && (
+                    <svg
+                      width={14}
+                      height={14}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                      aria-hidden="true"
+                      className={`text-slate-400 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+                    >
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              {row.allocated > 0 && (
+                <div className="h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${overCat ? "bg-rose-500" : pctCat >= 80 ? "bg-amber-500" : "bg-emerald-500"}`}
+                    style={{ width: `${pctCat}%` }}
+                    role="progressbar"
+                    aria-valuenow={Math.round(pctCat)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`${Math.round(pctCat)}% used`}
+                  />
+                </div>
+              )}
+            </button>
+
+            {/* Merchant drill-down */}
+            {isExpanded && (
+              <div className="bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800">
+                <ul className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                  {topMerchants.map(([merchant, amount]) => (
+                    <li key={merchant} className="flex items-center justify-between px-6 py-2.5">
+                      <span className="text-sm text-slate-700 dark:text-slate-300">{merchant}</span>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-white">{fmt(amount)}</span>
+                    </li>
+                  ))}
+                  {otherCount > 0 && (
+                    <li className="flex items-center justify-between px-6 py-2.5">
+                      <span className="text-sm text-slate-400 dark:text-slate-500">
+                        + {otherCount} more
+                      </span>
+                      <span className="text-sm font-semibold text-slate-400 dark:text-slate-500">
+                        {fmt(row.merchants.slice(5).reduce((s, [, a]) => s + a, 0))}
+                      </span>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
