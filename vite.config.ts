@@ -21,8 +21,20 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait-primary",
         start_url: "./",
-        // TODO: add 192x192 and 512x512 PNG icons to public/icons/ before deploying
-        icons: [],
+        icons: [
+          {
+            src: "favicon.svg",
+            sizes: "any",
+            type: "image/svg+xml",
+            purpose: "any"
+          },
+          {
+            src: "pwa-512x512.svg",
+            sizes: "512x512",
+            type: "image/svg+xml",
+            purpose: "any maskable"
+          }
+        ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],

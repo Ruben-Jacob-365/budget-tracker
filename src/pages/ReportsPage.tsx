@@ -500,22 +500,11 @@ export default function ReportsPage() {
                     </select>
                   )}
                   {chartDimension === "merchant" && (
-                    <select
-                      id="chart-value"
+                    <SearchableMerchantSelect
+                      merchants={merchantsList}
                       value={chartFilterValue}
-                      onChange={e => setChartFilterValue(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {merchantsList.length === 0 ? (
-                        <option value="">No merchants recorded yet</option>
-                      ) : (
-                        merchantsList.map(m => (
-                          <option key={m} value={m}>
-                            🏪 {m}
-                          </option>
-                        ))
-                      )}
-                    </select>
+                      onChange={setChartFilterValue}
+                    />
                   )}
                 </div>
               )}
@@ -908,4 +897,95 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
       {children}
     </section>
   );
+}
+
+// ── Searchable Merchant Select Component ─────────────────────────────────────
+
+function SearchableMerchantSelect({
+  merchants,
+  value,
+  onChange,
+}: {
+  merchants: string[]
+  value: string
+  onChange: (val: string) => void
+}) {
+  const [query, setQuery] = useState("")
+  const [isOpen, setIsOpen] = useState(false)
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return merchants
+    const q = query.toLowerCase()
+    return merchants.filter(m => m.toLowerCase().includes(q))
+  }, [merchants, query])
+
+  const selectedDisplay = value || (merchants.length > 0 ? merchants[0] : "")
+
+  return (
+    <div className="relative">
+      <div className="relative flex items-center">
+        <input
+          type="text"
+          value={isOpen ? query : selectedDisplay}
+          onFocus={() => {
+            setQuery("")
+            setIsOpen(true)
+          }}
+          onChange={e => {
+            setQuery(e.target.value)
+            setIsOpen(true)
+          }}
+          placeholder="Search merchant name..."
+          className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-8 pr-8 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <span className="absolute left-2.5 text-slate-400 text-xs" aria-hidden="true">🔍</span>
+        {value && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange("")
+              setQuery("")
+            }}
+            className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1"
+            title="Clear merchant filter"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-56 overflow-y-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg divide-y divide-slate-100 dark:divide-slate-700/50">
+            {filtered.length === 0 ? (
+              <div className="p-3 text-xs text-slate-400 text-center">
+                No matching merchants found
+              </div>
+            ) : (
+              filtered.map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    onChange(m)
+                    setQuery("")
+                    setIsOpen(false)
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors flex items-center justify-between ${
+                    value === m
+                      ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-800 dark:text-slate-200"
+                  }`}
+                >
+                  <span className="truncate">🏪 {m}</span>
+                  {value === m && <span className="text-indigo-600 dark:text-indigo-400 font-bold">✓</span>}
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
