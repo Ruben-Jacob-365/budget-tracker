@@ -1,48 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4f46e5" />
-      <stop offset="50%" stop-color="#6366f1" />
-      <stop offset="100%" stop-color="#7c3aed" />
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#312e81"/>
     </linearGradient>
-    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25" />
-      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05" />
+    <linearGradient id="coinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#c7d2fe"/>
     </linearGradient>
-    <linearGradient id="chartGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#34d399" />
-      <stop offset="100%" stop-color="#38bdf8" />
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#000000" flood-opacity="0.3" />
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
     </filter>
   </defs>
 
-  <!-- Squircle Base -->
-  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  <!-- Circle background -->
+  <circle cx="256" cy="256" r="256" fill="url(#bg)"/>
 
-  <!-- Inner Subtle Glass Glow -->
-  <rect x="24" y="24" width="464" height="464" rx="90" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="4" />
+  <!-- Subtle inner circle ring -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
 
-  <!-- Main Wallet/Card Graphic Container -->
-  <g filter="url(#shadow)">
-    <!-- Glassmorphic Card Frame -->
-    <rect x="96" y="140" width="320" height="232" rx="28" fill="url(#cardGrad)" stroke="#ffffff" stroke-opacity="0.3" stroke-width="3" />
-    
-    <!-- Card Stripe / Accent -->
-    <path d="M 96 196 L 416 196" stroke="#ffffff" stroke-opacity="0.15" stroke-width="2" />
-    
-    <!-- Upward Growth Chart Line -->
-    <path d="M 136 300 Q 180 280, 220 290 T 310 240 T 376 210" fill="none" stroke="url(#chartGrad)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
-    
-    <!-- Sparkle / Arrow Head -->
-    <circle cx="376" cy="210" r="10" fill="#38bdf8" />
-    <circle cx="376" cy="210" r="18" fill="none" stroke="#38bdf8" stroke-opacity="0.5" stroke-width="3" />
+  <!-- Chart bars (bold, high contrast, white) -->
+  <!-- Bar 1 -->
+  <rect x="112" y="280" width="52" height="100" rx="12" fill="#ffffff" fill-opacity="0.35"/>
+  <!-- Bar 2 -->
+  <rect x="182" y="220" width="52" height="160" rx="12" fill="#ffffff" fill-opacity="0.6"/>
+  <!-- Bar 3 -->
+  <rect x="252" y="170" width="52" height="210" rx="12" fill="#ffffff" fill-opacity="0.85"/>
+  <!-- Bar 4 -->
+  <rect x="322" y="130" width="52" height="250" rx="12" fill="#ffffff"/>
 
-    <!-- Coin / Currency Emblem -->
-    <g transform="translate(136, 220)">
-      <circle cx="28" cy="28" r="24" fill="#10b981" />
-      <text x="28" y="36" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="26" font-weight="bold" fill="#ffffff" text-anchor="middle">$</text>
-    </g>
-  </g>
+  <!-- Trend line over bars -->
+  <path d="M 138 275 C 175 230, 215 205, 278 175 S 350 135, 398 108"
+        fill="none"
+        stroke="#ffffff"
+        stroke-width="10"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-opacity="0.9"/>
+
+  <!-- Trend arrow dot -->
+  <circle cx="398" cy="108" r="14" fill="#ffffff"/>
+
+  <!-- Upward arrow inside dot -->
+  <path d="M 398 122 L 398 96 M 390 104 L 398 96 L 406 104"
+        stroke="#1e1b4b"
+        stroke-width="5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill="none"/>
+
+  <!-- Dollar symbol - large, bold, visible -->
+  <text x="256" y="102"
+        font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif"
+        font-size="72"
+        font-weight="900"
+        fill="#ffffff"
+        fill-opacity="0.18"
+        text-anchor="middle"
+        dominant-baseline="middle">$</text>
 </svg>
