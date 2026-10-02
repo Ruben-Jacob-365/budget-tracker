@@ -85,21 +85,63 @@ export default function ReportsPage() {
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
   const selectedBudget = filteredBudgetsForMonth.find(b => b.id === selectedBudgetId);
 
-  // ── Overview charts ──────────────────────────────────────────────────────
+  // ── Overview charts controls ──────────────────────────────────────────────
+  const [chartMonths, setChartMonths] = useState<number>(6);
+  const [chartDimension, setChartDimension] = useState<'all' | 'account' | 'category' | 'merchant'>('all');
+  const [chartFilterValue, setChartFilterValue] = useState<string>('');
+
+  const merchantsList = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const tx of transactions) {
+      if (tx.merchant?.trim()) {
+        const name = tx.merchant.trim();
+        map.set(name, (map.get(name) ?? 0) + 1);
+      }
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [transactions]);
 
   const chartData = useMemo(() => {
     const months: Array<{ month: string; income: number; expense: number }> = [];
-    for (let i = 5; i >= 0; i--) {
+    for (let i = chartMonths - 1; i >= 0; i--) {
       const cursor = addMonths(month, -i);
-      const monthTxs = transactions.filter((tx) => tx.date.startsWith(cursor));
+      let monthTxs = transactions.filter((tx) => tx.date.startsWith(cursor));
+
+      if (chartDimension === 'account' && chartFilterValue) {
+        monthTxs = monthTxs.filter(
+          tx => tx.accountId === chartFilterValue || tx.toAccountId === chartFilterValue
+        );
+      } else if (chartDimension === 'category' && chartFilterValue) {
+        monthTxs = monthTxs.filter(tx => tx.categoryId === chartFilterValue);
+      } else if (chartDimension === 'merchant' && chartFilterValue) {
+        monthTxs = monthTxs.filter(tx => tx.merchant?.trim() === chartFilterValue);
+      }
+
       months.push({
-        month: cursor,
+        month: formatMonthYear(cursor),
         income: monthTxs.filter(tx => tx.type === "income").reduce((s, tx) => s + tx.amount, 0),
         expense: monthTxs.filter(tx => tx.type === "expense").reduce((s, tx) => s + tx.amount, 0),
       });
     }
     return months;
-  }, [transactions, month]);
+  }, [transactions, month, chartMonths, chartDimension, chartFilterValue]);
+
+  const chartFilterLabel = useMemo(() => {
+    if (chartDimension === 'account') {
+      const acc = accounts.find(a => a.id === chartFilterValue);
+      return acc ? `${acc.name} Account` : 'Selected Account';
+    }
+    if (chartDimension === 'category') {
+      const cat = catMap.get(chartFilterValue);
+      return cat ? `${cat.name} Category` : 'Selected Category';
+    }
+    if (chartDimension === 'merchant') {
+      return chartFilterValue ? `Merchant: ${chartFilterValue}` : 'Selected Merchant';
+    }
+    return 'All Spending & Income';
+  }, [chartDimension, chartFilterValue, accounts, catMap]);
 
   const categoryBreakdown = useMemo(() => {
     const totals = new Map<string, number>();
@@ -249,7 +291,7 @@ export default function ReportsPage() {
         spent: byCategory.get(catId)?.total ?? 0,
         merchants: byCategory.get(catId)
           ? Array.from(byCategory.get(catId)!.merchants.entries())
-              .sort((a, b) => b[1] - a[1])
+            .sort((a, b) => b[1] - a[1])
           : [],
       }))
       .sort((a, b) => b.spent - a.spent);
@@ -370,23 +412,149 @@ export default function ReportsPage() {
             )}
           </section>
 
-          <ChartCard title="Spending by month (last 6 months)">
+          {/* Interactive Trend Chart Controls */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3" aria-label="Chart controls">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Trend Chart Filters</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Showing data for: <span className="font-semibold text-indigo-600 dark:text-indigo-400">{chartFilterLabel}</span> ({chartMonths} Months)
+                </p>
+              </div>
+
+              {/* Months Range Selector */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl gap-1 text-xs">
+                {[3, 6, 12].map(m => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setChartMonths(m)}
+                    className={`px-3 py-1 rounded-lg font-semibold transition-colors ${chartMonths === m
+                      ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      }`}
+                  >
+                    {m}M
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filter Controls Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div>
+                <label htmlFor="chart-dimension" className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
+                  Filter Dimension
+                </label>
+                <select
+                  id="chart-dimension"
+                  value={chartDimension}
+                  onChange={e => {
+                    const dim = e.target.value as any;
+                    setChartDimension(dim);
+                    if (dim === "all") setChartFilterValue("");
+                    else if (dim === "account" && accounts.length > 0) setChartFilterValue(accounts[0].id);
+                    else if (dim === "category" && categories.length > 0) setChartFilterValue(categories[0].id);
+                    else if (dim === "merchant" && merchantsList.length > 0) setChartFilterValue(merchantsList[0]);
+                  }}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">🌐 All Transactions (Overall)</option>
+                  <option value="account">🏦 By Account</option>
+                  <option value="category">📦 By Category</option>
+                  <option value="merchant">🏪 By Merchant</option>
+                </select>
+              </div>
+
+              {chartDimension !== "all" && (
+                <div>
+                  <label htmlFor="chart-value" className="block text-[11px] font-medium text-slate-400 uppercase tracking-wider mb-1">
+                    Select {chartDimension.charAt(0).toUpperCase() + chartDimension.slice(1)}
+                  </label>
+                  {chartDimension === "account" && (
+                    <select
+                      id="chart-value"
+                      value={chartFilterValue}
+                      onChange={e => setChartFilterValue(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {accounts.map(acc => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.type === "credit_card" ? "💳" : "🏦"} {acc.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {chartDimension === "category" && (
+                    <select
+                      id="chart-value"
+                      value={chartFilterValue}
+                      onChange={e => setChartFilterValue(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.icon || "📦"} {cat.name} ({cat.type})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {chartDimension === "merchant" && (
+                    <select
+                      id="chart-value"
+                      value={chartFilterValue}
+                      onChange={e => setChartFilterValue(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {merchantsList.length === 0 ? (
+                        <option value="">No merchants recorded yet</option>
+                      ) : (
+                        merchantsList.map(m => (
+                          <option key={m} value={m}>
+                            🏪 {m}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <ChartCard title={`Income vs Expense Trend — ${chartFilterLabel} (Last ${chartMonths} Months)`}>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
+                <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.25} />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(value) => currencyFmt(value)} />
                   <Legend />
-                  <Bar dataKey="income" fill="#10b981" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="expense" fill="#ef4444" radius={[6, 6, 0, 0]} />
-                </BarChart>
+                  <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} name="Income" />
+                  <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={3} dot={{ r: 3 }} name="Expense" />
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </ChartCard>
 
           <div className="grid gap-4 lg:grid-cols-2">
+            <ChartCard title={`Monthly Spending Bar Breakdown — ${chartFilterLabel} (Last ${chartMonths} Months)`}>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.25} />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(value) => currencyFmt(value)} />
+                    <Legend />
+                    <Bar dataKey="income" fill="#10b981" radius={[6, 6, 0, 0]} name="Income" />
+                    <Bar dataKey="expense" fill="#ef4444" radius={[6, 6, 0, 0]} name="Expense" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+
             <ChartCard title={`Category breakdown — ${formatMonthYear(month)}`}>
               {categoryBreakdown.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500 py-4 text-center">No expenses this month</p>
@@ -407,21 +575,6 @@ export default function ReportsPage() {
               )}
             </ChartCard>
 
-            <ChartCard title="Income vs expense trend">
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" opacity={0.25} />
-                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(value) => currencyFmt(value)} />
-                    <Legend />
-                    <Line type="monotone" dataKey="income" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={3} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </ChartCard>
           </div>
         </div>
       )}
@@ -643,9 +796,8 @@ function CategoryRowsList({
               type="button"
               onClick={() => row.merchants.length > 0 && toggleCat(row.catId)}
               aria-expanded={isExpanded}
-              className={`w-full px-5 py-4 text-left transition-colors ${
-                row.merchants.length > 0 ? "hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""
-              }`}
+              className={`w-full px-5 py-4 text-left transition-colors ${row.merchants.length > 0 ? "hover:bg-slate-50 dark:hover:bg-slate-800/50" : ""
+                }`}
             >
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 min-w-0">
