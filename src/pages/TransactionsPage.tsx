@@ -20,10 +20,17 @@ export default function TransactionsPage() {
   const { accounts } = useAccounts()
   const { parentBudgets } = useParentBudgets()
   const [month, setMonth] = useState(getCurrentMonth())
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all')
 
   const monthTransactions = useMemo(() => {
-    return transactions.filter(tx => tx.date.startsWith(month))
-  }, [transactions, month])
+    let result = transactions.filter(tx => tx.date.startsWith(month))
+    if (selectedAccountId !== 'all') {
+      result = result.filter(
+        tx => tx.accountId === selectedAccountId || tx.toAccountId === selectedAccountId
+      )
+    }
+    return result
+  }, [transactions, month, selectedAccountId])
 
   /** Unique merchants sorted by how often they appear (most frequent first). */
   const merchants = useMemo(() => {
@@ -71,6 +78,38 @@ export default function TransactionsPage() {
 
         {/* Month Selector */}
         <MonthPicker month={month} onChange={setMonth} />
+
+        {/* Account Filter */}
+        {accounts.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 text-xs sm:text-sm no-scrollbar" role="group" aria-label="Filter transactions by account">
+            <button
+              type="button"
+              onClick={() => setSelectedAccountId('all')}
+              className={`px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-colors min-h-[38px] ${
+                selectedAccountId === 'all'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              All Accounts
+            </button>
+            {accounts.map(acc => (
+              <button
+                key={acc.id}
+                type="button"
+                onClick={() => setSelectedAccountId(acc.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium whitespace-nowrap transition-colors min-h-[38px] ${
+                  selectedAccountId === acc.id
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span>{acc.type === 'credit_card' ? '💳' : '🏦'}</span>
+                <span>{acc.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-12" role="status" aria-label="Loading transactions">

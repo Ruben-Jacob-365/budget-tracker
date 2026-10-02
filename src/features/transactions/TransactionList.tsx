@@ -42,7 +42,7 @@ interface Props {
   accounts: Account[];
   currencySymbol: string;
   locale: string;
-  onEditTransaction: (tx: Transaction) => void;
+  onEditTransaction?: (tx: Transaction) => void;
 }
 
 export default function TransactionList({
@@ -116,7 +116,7 @@ export default function TransactionList({
                 toAccount={accMap.get(tx.toAccountId ?? "")}
                 currencySymbol={currencySymbol}
                 locale={locale}
-                onClick={() => onEditTransaction(tx)}
+                onClick={() => onEditTransaction?.(tx)}
               />
             ))}
           </div>

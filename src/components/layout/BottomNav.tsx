@@ -6,7 +6,7 @@ const NAV_ITEMS = [
   { to: '/',             label: 'Dashboard',    Icon: HomeIcon,         end: true  },
   { to: '/transactions', label: 'Transactions', Icon: TransactionsIcon, end: false },
   { to: '/budgets',      label: 'Budgets',      Icon: BudgetsIcon,      end: false },
-  { to: '/reports',      label: 'Reports',      Icon: ReportsIcon,      end: false },
+  { to: '/reports',      label: 'Analytics',    Icon: ReportsIcon,      end: false },
   { to: '/settings',     label: 'Settings',     Icon: SettingsIcon,     end: false },
 ]
 
